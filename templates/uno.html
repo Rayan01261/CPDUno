@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Online</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <style>
+
+        .overlay-vitoria {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .painel-vitoria {
+            background: var(--bg-color-2);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px 50px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+
+        .painel-vitoria h2 {
+            font-size: 2rem;
+            background: linear-gradient(45deg, #ef4444, #3b82f6, #eab308, #22c55e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .painel-vitoria p {
+            color: var(--text-dim);
+            margin-bottom: 24px;
+        }
+
+        .painel-roleta {
+            position: fixed;
+            top: 50%;
+            left: calc(50% + 500px);
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            z-index: 50;
+        }
+
+        .roleta-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+        }
+
+        .roleta-ponteiro {
+            position: absolute;
+            top: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 9px solid transparent;
+            border-right: 9px solid transparent;
+            border-top: 15px solid var(--accent-color);
+            filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.7));
+            z-index: 3;
+        }
+
+        .roleta-disco {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.04), transparent 70%);
+            border: 2px dashed var(--border-color);
+            transition: transform 0.7s cubic-bezier(.22,.85,.3,1);
+        }
+
+        .roleta-chip {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+
+        .roleta-chip-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 8px 5px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            transition: transform 0.7s cubic-bezier(.22,.85,.3,1), border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .roleta-chip.vez .roleta-chip-inner {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 1px var(--accent-color), 0 0 14px rgba(99, 102, 241, 0.55);
+        }
+
+        .roleta-centro {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.4rem;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .play-log {
+            position: fixed;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            width: 260px;
+            max-width: 25vw;
+            height: 400px;        /* <-- troque max-height por height */
+            overflow-y: auto;
+            background: rgba(0,0,0,0.6);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+            color: var(--text-color);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 40;
+        }
+
+        .avatar-picker {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px dashed var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background: rgba(255,255,255,0.03);
+            flex-shrink: 0;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .avatar-picker:hover {
+            border-color: var(--accent-color);
+        }
+
+        .avatar-picker img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .avatar-img {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.15);
+        }
+
+        .avatar-ordem-img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.15);
+        }
+
+        @media (max-width: 1100px) {
+            .painel-roleta { display: none; } /* some em telas estreitas pra não sobrepor o conteúdo */
+        }
+        :root {
+            --bg-color: #0f172a;
+            --bg-color-2: #131c33;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-color: #f8fafc;
+            --text-dim: #94a3b8;
+            --accent-color: #6366f1;
+
+            /* Cores das Cartas */
+            --uno-vermelho: #ef4444;
+            --uno-azul: #3b82f6;
+            --uno-amarelo: #eab308;
+            --uno-verde: #22c55e;
+            --uno-especial: #1e293b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background:
+                radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.12), transparent 40%),
+                radial-gradient(circle at 85% 90%, rgba(34, 197, 94, 0.10), transparent 40%),
+                var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            transition: background 0.6s ease;
+        }
+
+        body.brilho-turno {
+            background:
+                radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.22), transparent 45%),
+                radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.18), transparent 45%),
+                var(--bg-color);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 960px;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            letter-spacing: 1px;
+            background: linear-gradient(45deg, #ef4444, #3b82f6, #eab308, #22c55e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        .btn-som {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            font-size: 1.1rem;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 960px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Lobby / Configuração */
+        .card-panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .overlay-cor {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .seletor-cor {
+            background: var(--bg-color-2);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .seletor-cor h3 {
+            margin-bottom: 16px;
+        }
+
+        .opcoes-cor {
+            display: flex;
+            gap: 12px;
+        }
+
+        .avatar-vitoria {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 16px;
+            display: block;
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 4px var(--accent-color), 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .avatar-vitoria-fallback {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: white;
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 4px var(--accent-color), 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .opcao-cor {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+
+        .opcao-cor:hover {
+            transform: scale(1.08);
+            border-color: white;
+        }
+        .lobby-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        input {
+            flex: 1;
+            min-width: 160px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent-color);
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ===== Painel de Ordem de Jogo ===== */
+        .painel-ordem {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .painel-ordem-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .painel-ordem-header h3 {
+            font-size: 1rem;
+        }
+
+        .fluxo-jogo {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid var(--accent-color);
+            color: var(--text-color);
+            transition: background 0.3s, border-color 0.3s;
+        }
+
+        .fluxo-jogo .icone-fluxo {
+            font-size: 1.1rem;
+            display: inline-block;
+        }
+
+        .fluxo-jogo.sentido-anti {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: var(--uno-vermelho);
+        }
+
+        .lista-ordem {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .chip-ordem {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 10px 7px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            min-width: 68px;
+            transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+        }
+
+        .chip-ordem.vez {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 1px var(--accent-color), 0 0 14px rgba(99, 102, 241, 0.55);
+            transform: translateY(-2px);
+        }
+
+        .avatar-ordem {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.78rem;
+            color: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        }
+
+        .nome-ordem {
+            font-size: 0.66rem;
+            color: var(--text-dim);
+            max-width: 72px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Selo quadrado indicando o próximo jogador */
+        .badge-proximo {
+            position: absolute;
+            top: -9px;
+            right: -9px;
+            width: 60px;
+            height: 22px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #08ea13, #1625f9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            border: 2px solid var(--bg-color-2);
+        }
+
+        .seta-ordem {
+            font-size: 1.25rem;
+            color: var(--accent-color);
+            opacity: 0.85;
+            padding: 0 2px;
+        }
+
+        .seta-loop {
+            color: var(--text-dim);
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+
+        /* ===== Mesa completa ===== */
+        .mesa-wrapper {
+            background: radial-gradient(ellipse at center, var(--bg-color-2) 0%, #0b1120 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 0 60px rgba(0,0,0,0.4);
+            transition: border-color 0.4s ease, box-shadow 0.4s ease;
+        }
+
+        .mesa-wrapper.brilho-turno {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 1px var(--accent-color), 0 0 40px rgba(99, 102, 241, 0.45), inset 0 0 60px rgba(0,0,0,0.4);
+            animation: pulsarBorda 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulsarBorda {
+            0%, 100% { box-shadow: 0 0 0 1px var(--accent-color), 0 0 30px rgba(99, 102, 241, 0.35), inset 0 0 60px rgba(0,0,0,0.4); }
+            50% { box-shadow: 0 0 0 2px var(--accent-color), 0 0 55px rgba(99, 102, 241, 0.65), inset 0 0 60px rgba(0,0,0,0.4); }
+        }
+
+        /* Faixa de outros jogadores */
+        .outros-jogadores {
+            display: flex;
+            justify-content: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding-bottom: 20px;
+            min-height: 96px;
+        }
+
+        .jogador-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 12px 8px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            min-width: 82px;
+            position: relative;
+            transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+        }
+
+        .jogador-badge.vez {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 1px var(--accent-color), 0 0 16px rgba(99, 102, 241, 0.5);
+            transform: translateY(-3px);
+        }
+
+        .jogador-badge.vez::before {
+            content: "▾";
+            position: absolute;
+            top: -18px;
+            color: var(--accent-color);
+            font-size: 1rem;
+            animation: saltar 1s ease-in-out infinite;
+        }
+
+        @keyframes saltar {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(4px); }
+        }
+
+        .avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        }
+
+        .nome-jogador {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            max-width: 78px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mini-mao {
+            display: flex;
+            justify-content: center;
+        }
+
+        .mini-carta {
+            width: 20px;
+            height: 28px;
+            border-radius: 4px;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 2px solid #f8fafc;
+            margin-left: -10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .mini-carta:first-child { margin-left: 0; }
+
+        .mini-carta::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, var(--uno-vermelho), var(--uno-amarelo), var(--uno-verde), var(--uno-azul));
+            opacity: 0.9;
+        }
+
+        .qtd-cartas {
+            font-size: 0.68rem;
+            color: var(--text-color);
+            background: rgba(0,0,0,0.4);
+            padding: 1px 7px;
+            border-radius: 10px;
+            margin-top: 2px;
+        }
+
+        .sem-jogadores {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            align-self: center;
+        }
+
+        /* Área Central da Mesa */
+        .mesa {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            min-height: 180px;
+            border: 2px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        /* Indicador de turno — bem mais visível */
+        .turnoDiv {
+            font-weight: bold;
+            color: var(--text-dim);
+            text-align: center;
+            font-size: 0.95rem;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        .unoDiv {
+            font-weight: bold;
+            color: var(--text-dim);
+            text-align: center;
+            font-size: 0.95rem;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            white-space: nowrap;
+ 
+        }
+
+        .turnoDiv.sua-vez {
+            color: white;
+            font-size: 1.15rem;
+            background: linear-gradient(90deg, var(--accent-color), #8b5cf6);
+            border-color: transparent;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.7);
+            animation: pulsarTexto 1.2s ease-in-out infinite;
+        }
+        .unoDiv.sua-vez {
+            color: white;
+            font-size: 1.15rem;
+            background: linear-gradient(90deg, var(--accent-color), #8b5cf6);
+            border-color: transparent;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.7);
+            animation: pulsarTexto 1.2s ease-in-out infinite;
+        }
+
+        @keyframes pulsarTexto {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .monte-compras {
+            width: 100px;
+            height: 140px;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 2px solid #475569;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .monte-compras::before {
+            content: "";
+            position: absolute;
+            inset: 6px;
+            border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+        }
+
+        .monte-compras span {
+            background: linear-gradient(45deg, var(--uno-vermelho), var(--uno-amarelo), var(--uno-verde), var(--uno-azul));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.3rem;
+            letter-spacing: 1px;
+        }
+
+        .monte-compras:hover {
+            transform: scale(1.05) translateY(-2px);
+        }
+
+        .monte-compras:active {
+            transform: scale(0.96);
+        }
+
+        /* Estilização das Cartas de UNO */
+        .carta-uno {
+            width: 100px;
+            height: 140px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.45), inset 0 0 0 2px rgba(255,255,255,0.25);
+            position: relative;
+            user-select: none;
+            border: 3px solid #fff;
+            transition: transform 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+            background-image: radial-gradient(ellipse 140% 90% at 50% 50%, rgba(255,255,255,0.22), transparent 60%);
+        }
+
+        .carta-uno:hover {
+            transform: translateY(-10px) scale(1.03);
+            box-shadow: 0 14px 28px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(255,255,255,0.35);
+        }
+
+        .carta-uno .canto {
+            font-size: 0.85rem;
+            line-height: 1;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+            z-index: 1;
+        }
+
+        .carta-uno .canto-baixo {
+            align-self: flex-end;
+            transform: rotate(180deg);
+        }
+
+        .carta-uno .valor-central {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .carta-uno .valor-oval {
+            background: rgba(0,0,0,0.28);
+            border-radius: 50% / 60%;
+            width: 68%;
+            padding: 14px 6px;
+            text-align: center;
+            font-size: 1.15rem;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            transform: rotate(-18deg);
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
+        }
+
+        /* Cores Dinâmicas das Cartas */
+        .bg-vermelho { background: linear-gradient(155deg, #f87171, var(--uno-vermelho) 55%, #b91c1c); }
+        .bg-azul { background: linear-gradient(155deg, #60a5fa, var(--uno-azul) 55%, #1d4ed8); }
+        .bg-amarelo { background: linear-gradient(155deg, #fde047, var(--uno-amarelo) 55%, #a16207); color: #1f2937; }
+        .bg-amarelo .valor-oval, .bg-amarelo .canto { text-shadow: 1px 1px 2px rgba(0,0,0,0.35); }
+        .bg-verde { background: linear-gradient(155deg, #4ade80, var(--uno-verde) 55%, #15803d); }
+        .bg-especial { background: linear-gradient(155deg, #334155, var(--uno-especial) 55%, #020617); }
+
+        /* Animação de carta nova chegando na mão */
+        @keyframes cartaEntrando {
+            0% { opacity: 0; transform: translateY(40px) scale(0.6) rotate(8deg); }
+            100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+        }
+
+        .carta-entrando {
+            animation: cartaEntrando 0.4s cubic-bezier(.2,.8,.3,1) both;
+        }
+
+        /* Mão do Jogador */
+        .mao-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 10px 0;
+        }
+
+        .mao {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            min-height: 160px;
+        }
+
+        /* Logs e Status */
+        .status-bar {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 5px;
+        }
+
+
+    </style>
+</head>
+<body> 
+
+    <div class="painel-roleta">
+        <div class="fluxo-jogo" id="fluxo-jogo">
+            <span class="icone-fluxo">↻</span>
+            <span>Sentido anti-horário</span>
+        </div>
+        <div class="roleta-container">
+            <div class="roleta-ponteiro"></div>
+            <div class="roleta-disco" id="roleta-disco"></div>
+            <div class="roleta-centro">🎯</div>
+        </div>
+    </div>
+
+    <div class="play-log" id="play-log">
+        <h3>Historico de Ações</h3>
+        <!-- Logs de ações do jogo entram aqui -->
+    </div>
+
+    <header>
+        <button class="btn-som" id="btn-som" onclick="alternarSom()" title="Ativar/desativar som">🔊</button>
+        <h1>CPDUNO</h1>
+        <div id="status-conexao" class="status-bar">Desconectado do servidor</div>
+    </header>
+
+    <div class="container">
+        <!-- Controle da Sala -->
+        <div class="card-panel">
+            <div class="lobby-controls">
+                <div class="avatar-picker" onclick="document.getElementById('input-foto').click()" title="Escolher foto de perfil">
+                    <img id="preview-foto" style="display:none;" alt="Sua foto">
+                    <span id="placeholder-foto">📷</span>
+                </div>
+                <input type="file" id="input-foto" accept="image/*" style="display:none" onchange="selecionarFoto(event)">
+
+                <input type="text" id="meu-nome" placeholder="Seu nome" maxlength="16">
+                <button id="btn-mudar-nome" onclick="mudarNome()" disabled>Mudar nome</button>
+                <input type="text" id="sala-id" placeholder="Nome ou ID da Sala">
+                <button onclick="entrarNaSala()">Entrar na Sala</button>
+                <button id="btn-iniciar" onclick="iniciarJogo()" disabled>Iniciar Jogo</button>
+            </div>
+            <div id="status-sala" class="status-bar" style="margin-top: 10px;">Aguardando entrada em uma sala...</div>
+        </div>
+
+        <div class="card-panel" id="painel-salas">
+            <h3>Salas Abertas</h3>
+            <div id="lista-salas" class="status-bar">Carregando...</div>
+        </div>
+
+
+        <!-- Mesa (jogadores + monte) -->
+        <div class="mesa-wrapper" id="mesa-wrapper">
+            <div id="outros-jogadores" class="outros-jogadores">
+                <span class="sem-jogadores">Nenhum outro jogador na sala ainda</span>
+            </div>
+            <div class="turnoDiv" style="margin-bottom: 8px;"></div>
+            <div class="unoDiv" style="margin-bottom: 8px;"></div>
+            <div class="mesa">
+                <div>
+                    <p style="text-align: center; margin-bottom: 8px; font-size: 0.8rem; color: var(--text-dim);">MESA</p>
+                    <div id="carta-mesa-container" style="width:100px; height:140px;">
+                        <!-- A carta atual da mesa entra aqui via JS -->
+                    </div>
+                </div>
+
+                <div>
+                    <p style="text-align: center; margin-bottom: 8px; font-size: 0.8rem; color: var(--text-dim);">COMPRAR</p>
+                    
+                    <div class="monte-compras" id="monte-compras" onclick="comprarCarta()">
+                        <span id="texto-monte">UNO</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mão de Cartas do Jogador -->
+        <div class="card-panel">
+            <h3>Sua Mão: <span id="contador-mao">0</span> carta(s)</h3>
+            <div class="mao-container">
+                <div id="minha-mao" class="mao">
+                    <!-- As cartas entram aqui via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let salaAtual = "";
+        let meuSid = null;
+        let meuNome = "";
+        let minhaFoto = null;
+        let jogoEncerrado = false;
+        let jogadores = [];
+        let primeiroTurnoDaPartida = true;   // <-- nova flag
+
+        // Estado da ordem/fluxo de jogo
+        let sidAtualTurno = null;
+        let sidProximoTurno = null;
+        let direcaoAtual = 1; // 1 = horário, -1 = anti-horário
+
+        /* ================= SOM ================= */
+        let audioCtx = null;
+        let somAtivado = true;
+
+        function alternarSom() {
+            somAtivado = !somAtivado;
+            document.getElementById('btn-som').innerText = somAtivado ? "🔊" : "🔇";
+            if (somAtivado) obterAudioCtx();
+        }
+
+        function selecionarFoto(event) {
+            const arquivo = event.target.files[0];
+            if (!arquivo) return;
+            if (!arquivo.type.startsWith('image/')) {
+                alert('Selecione um arquivo de imagem.');
+                return;
+            }
+
+            const leitor = new FileReader();
+            leitor.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const tamanho = 128;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = tamanho;
+                    canvas.height = tamanho;
+                    const ctx = canvas.getContext('2d');
+
+                    // corta a imagem em quadrado (crop central) antes de redimensionar
+                    const lado = Math.min(img.width, img.height);
+                    const sx = (img.width - lado) / 2;
+                    const sy = (img.height - lado) / 2;
+                    ctx.drawImage(img, sx, sy, lado, lado, 0, 0, tamanho, tamanho);
+
+                    minhaFoto = canvas.toDataURL('image/jpeg', 0.7);
+
+                    const preview = document.getElementById('preview-foto');
+                    preview.src = minhaFoto;
+                    preview.style.display = 'block';
+                    document.getElementById('placeholder-foto').style.display = 'none';
+
+                    // já está numa sala? atualiza a foto pros outros na hora
+                    if (salaAtual) {
+                        socket.emit('definir_foto', { sala: salaAtual, foto: minhaFoto });
+                    }
+                };
+                img.src = e.target.result;
+            };
+            leitor.readAsDataURL(arquivo);
+        }
+
+        function atualizarTextoMonte(qtd) {
+            const el = document.getElementById('texto-monte');
+            if (el) el.innerText = qtd;
+        }
+
+        function atualizarContadorMao() {
+            const total = document.getElementById('minha-mao').children.length;
+            const el = document.getElementById('contador-mao');
+            if (el) el.innerText = total;
+        }
+
+        function obterAudioCtx() {
+            if (!audioCtx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return null;
+                audioCtx = new AC();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function tocarTom(freq, duracao, tipo = 'sine', volume = 0.15, atraso = 0) {
+            if (!somAtivado) return;
+            const ctx = obterAudioCtx();
+            if (!ctx) return;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = tipo;
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            const inicio = ctx.currentTime + atraso;
+            gain.gain.setValueAtTime(0.0001, inicio);
+            gain.gain.exponentialRampToValueAtTime(volume, inicio + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, inicio + duracao);
+            osc.start(inicio);
+            osc.stop(inicio + duracao + 0.03);
+        }
+
+        function somJogarCarta() {
+            tocarTom(540, 0.09, 'triangle', 0.18);
+            tocarTom(760, 0.09, 'triangle', 0.13, 0.05);
+        }
+
+        function somComprarCarta() {
+            tocarTom(200, 0.14, 'sawtooth', 0.07);
+        }
+
+        function somSuaVez() {
+            tocarTom(660, 0.14, 'sine', 0.16);
+            tocarTom(880, 0.18, 'sine', 0.16, 0.13);
+        }
+
+        function somErro() {
+            tocarTom(150, 0.22, 'square', 0.09);
+        }
+
+        function somVitoria() {
+            [523, 659, 784, 1046].forEach((f, i) => tocarTom(f, 0.28, 'triangle', 0.18, i * 0.13));
+        }
+
+        socket.on('vencedor', (data) => {
+            jogoEncerrado = true;
+            dispararConfetes();
+            somVitoria();
+            mostrarTelaDeVitoria(data.msg, data.sid);
+        });
+
+        function dispararConfetes() {
+            const duracao = 4000;
+            const fim = Date.now() + duracao;
+
+            (function tiro() {
+                confetti({
+                    particleCount: 60,
+                    angle: 60,
+                    spread: 65,
+                    origin: { x: 0, y: 0.7 },
+                    colors: ['#ef4444', '#3b82f6', '#eab308', '#22c55e']
+                });
+                confetti({
+                    particleCount: 60,
+                    angle: 120,
+                    spread: 65,
+                    origin: { x: 1, y: 0.7 },
+                    colors: ['#ef4444', '#3b82f6', '#eab308', '#22c55e']
+                });
+
+                if (Date.now() < fim) {
+                    requestAnimationFrame(tiro);
+                }
+            })();
+
+            // Uma rajada central de brinde
+            confetti({
+                particleCount: 150,
+                spread: 100,
+                origin: { y: 0.6 },
+                colors: ['#ef4444', '#3b82f6', '#eab308', '#22c55e']
+            });
+        }
+
+        function mostrarTelaDeVitoria(mensagem, sidVencedor) {
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay-vitoria';
+
+            const painel = document.createElement('div');
+            painel.className = 'painel-vitoria';
+
+            // busca o vencedor na lista de jogadores já conhecida pra pegar foto/nome
+            const vencedor = jogadores.find(j => j.sid === sidVencedor);
+
+            let avatarHtml = '';
+            if (vencedor) {
+                avatarHtml = vencedor.foto
+                    ? `<img src="${vencedor.foto}" class="avatar-vitoria" alt="${vencedor.nome}">`
+                    : `<div class="avatar-vitoria-fallback" style="background:${corAvatar(vencedor.sid)}">${iniciais(vencedor.nome)}</div>`;
+            }
+
+            painel.innerHTML = `
+                <h2>🎉 Fim de jogo!</h2>
+                ${avatarHtml}
+                <p>${mensagem}</p>
+                <button onclick="jogarNovamente()">Jogar novamente</button>
+            `;
+
+            overlay.appendChild(painel);
+            document.body.appendChild(overlay);
+        }
+
+        function jogarNovamente() {
+            const overlay = document.querySelector('.overlay-vitoria');
+            if (overlay) overlay.remove();
+
+            if (salaAtual) {
+                socket.emit('iniciar_jogo', { sala: salaAtual });
+            }
+        }
+
+        // Cores geradas para os avatares dos jogadores (sempre a mesma cor pro mesmo sid)
+        const CORES_AVATAR = ["#ef4444", "#3b82f6", "#eab308", "#22c55e", "#a855f7", "#f97316", "#14b8a6", "#ec4899"];
+        function corAvatar(sid) {
+            let hash = 0;
+            for (let i = 0; i < sid.length; i++) hash = (hash * 31 + sid.charCodeAt(i)) >>> 0;
+            return CORES_AVATAR[hash % CORES_AVATAR.length];
+        }
+        function iniciais(nome) {
+            return nome.trim().slice(0, 2).toUpperCase() || "??";
+        }
+
+        // Status de Conexão
+        socket.on('connect', () => {
+            meuSid = socket.id;
+            document.getElementById('status-conexao').innerText = "Conectado ao Servidor | ID: " + socket.id;
+            socket.emit('salas_ativas');   
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('status-conexao').innerText = "Desconectado do servidor";
+        });
+
+        // Eventos do Socket
+        socket.on('sala_entrada', (data) => {
+            document.getElementById('status-sala').innerText = data.msg;
+            document.getElementById('btn-iniciar').disabled = false;
+            document.getElementById('btn-mudar-nome').disabled = false;   // NOVO
+        });
+
+        socket.on('avisar_uno', (data) => {
+            if (data.sid === meuSid) {
+                document.querySelector('.unoDiv').innerText = "Você disse UNO!";
+                somSuaVez();
+            } else {
+                document.querySelector('.unoDiv').innerText = `${data.nome} disse UNO!`;
+            }
+            setTimeout(() => {
+                document.querySelector('.unoDiv').innerText = "";
+            }, 30000);
+        });
+
+        socket.on('status_sala', (data) => {
+            document.getElementById('status-sala').innerText = data.msg;
+        });
+
+        socket.on('atualizar_jogadores', (data) => {
+            jogadores = data.jogadores;
+            renderizarOutrosJogadores(data.jogadores);
+            renderizarRoleta(jogadores);
+        });
+
+        socket.on('mao_inicial', (data) => {
+            renderizarMao(data.mao);
+        });
+
+        socket.on('carta_sacada', (data) => {
+            somComprarCarta();
+            adicionarCartaNaMao(data.carta);
+        });
+
+        socket.on('play_log', (data) => {
+            adicionarLog(data.msg);
+        });
+
+        function adicionarLog(mensagem) {
+            const logContainer = document.getElementById('play-log');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerText = mensagem;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function mudarNome() {
+            if (!salaAtual) {
+                alert("Você precisa entrar em uma sala primeiro.");
+                return;
+            }
+            const novoNome = document.getElementById('meu-nome').value.trim();
+            if (!novoNome) {
+                alert("Digite um nome válido.");
+                return;
+            }
+            socket.emit('mudar_nome', { sala: salaAtual, nome: novoNome });
+        }
+
+        socket.on('sem_cartas', () => {
+            alert('O baralho da sala acabou!');
+        });
+
+        socket.on('nome_atualizado', (data) => {
+            if (data.sid === meuSid) {
+                meuNome = data.nome;
+            }
+            // atualiza a tela de vitória se estiver aberta (usa jogadores[] pra achar nome/foto)
+            const jogador = jogadores.find(j => j.sid === data.sid);
+            if (jogador) jogador.nome = data.nome;
+        });
+
+        socket.on('jogo_iniciado', (data) => {
+            jogoEncerrado = false;
+            document.getElementById('status-sala').innerText = data.msg;
+
+            const overlay = document.querySelector('.overlay-vitoria');
+            if (overlay) overlay.remove();
+
+            // Nova partida: a roleta deve nascer "zerada", sem herdar giro de rodadas anteriores
+            primeiroTurnoDaPartida = true;
+            rotacaoAcumulada = 0;
+            const disco = document.getElementById('roleta-disco');
+            if (disco) {
+                disco.style.transition = 'none';
+                disco.style.transform = 'rotate(0deg)';
+                void disco.offsetWidth;
+                disco.style.transition = '';
+            }
+        });
+
+        socket.on('entregar_salas', (data) => {
+            atualizarNovasSala(data.salas)
+        })
+
+        function atualizarNovasSala(salas) {
+            const container = document.getElementById('lista-salas');
+            if (!salas || salas.length === 0) {
+                container.innerHTML = 'Nenhuma sala aberta no momento.';
+                return;
+            }
+
+            container.innerHTML = salas.map(s => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                    <span>${s.nome} — ${s.qtd_jogadores} jogador${s.qtd_jogadores === 1 ? '' : 'es'} ${s.jogo_iniciado ? '(em partida)' : ''}</span>
+                    <button onclick="entrarNaSalaRapido('${s.nome}')" ${s.jogo_iniciado ? 'disabled' : ''}>Entrar</button>
+                </div>
+            `).join('');
+        }
+
+        function entrarNaSalaRapido(nomeSala) {
+            document.getElementById('sala-id').value = nomeSala;
+            entrarNaSala();
+        }
+
+        socket.on('tamanho_baralho', (data) => {
+            atualizarTextoMonte(data.tamanho);
+        });
+
+        socket.on('carta_mesa', (data) => {
+            renderizarCartaMesa(data.carta, data.cor);
+        });
+
+        socket.on('carta_jogada', (data) => {
+            if (!jogoEncerrado) somJogarCarta();
+            if (data.sid === meuSid) {
+                removerCartaDaMao(data.carta);
+            } else {
+                animarCostasParaMesa(data.sid);
+            }
+        });
+
+        function removerCartaDaMao(carta) {
+            const container = document.getElementById('minha-mao');
+            const alvo = Array.from(container.children).find(el => el.dataset.carta === carta);
+            if (alvo) {
+                animarCartaParaMesa(alvo);
+                container.removeChild(alvo);
+            }
+            atualizarContadorMao(); 
+        }
+
+        /* ================= ANIMAÇÕES DE CARTA ================= */
+
+        function animarCartaParaMesa(elementoOrigem) {
+            const destino = document.getElementById('carta-mesa-container');
+            if (!elementoOrigem || !destino) return;
+
+            const origemRect = elementoOrigem.getBoundingClientRect();
+            const destinoRect = destino.getBoundingClientRect();
+
+            const clone = elementoOrigem.cloneNode(true);
+            clone.style.position = 'fixed';
+            clone.style.left = origemRect.left + 'px';
+            clone.style.top = origemRect.top + 'px';
+            clone.style.width = origemRect.width + 'px';
+            clone.style.height = origemRect.height + 'px';
+            clone.style.margin = '0';
+            clone.style.zIndex = '1500';
+            clone.style.pointerEvents = 'none';
+            clone.style.transition = 'transform 0.45s cubic-bezier(.22,.85,.3,1), opacity 0.45s ease';
+            clone.onclick = null;
+            document.body.appendChild(clone);
+
+            const dx = destinoRect.left + (destinoRect.width - origemRect.width) / 2 - origemRect.left;
+            const dy = destinoRect.top + (destinoRect.height - origemRect.height) / 2 - origemRect.top;
+            const giro = (Math.random() * 24 - 12).toFixed(1);
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    clone.style.transform = `translate(${dx}px, ${dy}px) rotate(${giro}deg) scale(1.04)`;
+                });
+            });
+
+            setTimeout(() => clone.remove(), 480);
+        }
+
+        function animarCostasParaMesa(sid) {
+            const badge = document.querySelector(`.jogador-badge[data-sid="${sid}"]`);
+            const destino = document.getElementById('carta-mesa-container');
+            if (!badge || !destino) return;
+
+            const origemRect = badge.getBoundingClientRect();
+            const destinoRect = destino.getBoundingClientRect();
+            const largura = 60, altura = 84;
+
+            const clone = document.createElement('div');
+            clone.className = 'carta-uno bg-especial';
+            clone.style.position = 'fixed';
+            clone.style.left = (origemRect.left + origemRect.width / 2 - largura / 2) + 'px';
+            clone.style.top = origemRect.top + 'px';
+            clone.style.width = largura + 'px';
+            clone.style.height = altura + 'px';
+            clone.style.zIndex = '1500';
+            clone.style.pointerEvents = 'none';
+            clone.style.transition = 'transform 0.4s cubic-bezier(.22,.85,.3,1), opacity 0.4s ease';
+            document.body.appendChild(clone);
+
+            const dx = destinoRect.left + (destinoRect.width - largura) / 2 - parseFloat(clone.style.left);
+            const dy = destinoRect.top - origemRect.top;
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.85)`;
+                    clone.style.opacity = '0.25';
+                });
+            });
+
+            setTimeout(() => clone.remove(), 420);
+        }
+
+        function animarCompraParaMao() {
+            const origem = document.getElementById('monte-compras');
+            const destino = document.getElementById('minha-mao');
+            if (!origem || !destino) return;
+
+            const origemRect = origem.getBoundingClientRect();
+            const destinoRect = destino.getBoundingClientRect();
+
+            const clone = document.createElement('div');
+            clone.className = 'carta-uno bg-especial';
+            clone.style.position = 'fixed';
+            clone.style.left = origemRect.left + 'px';
+            clone.style.top = origemRect.top + 'px';
+            clone.style.width = '100px';
+            clone.style.height = '140px';
+            clone.style.zIndex = '1500';
+            clone.style.pointerEvents = 'none';
+            clone.style.transition = 'transform 0.4s cubic-bezier(.22,.85,.3,1), opacity 0.4s ease';
+            document.body.appendChild(clone);
+
+            const dx = destinoRect.left + 20 - origemRect.left;
+            const dy = destinoRect.top - origemRect.top;
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.7)`;
+                    clone.style.opacity = '0.3';
+                });
+            });
+
+            setTimeout(() => clone.remove(), 420);
+        }
+
+        function renderizarCartaMesa(carta, cor) {
+            const container = document.getElementById('carta-mesa-container');
+            container.innerHTML = '';
+            const elemento = criarElementoCarta(carta);
+
+            if (ehCuringa(carta) && cor) {
+                elemento.classList.remove('bg-especial');
+                const mapaClasse = {
+                    "Vermelho": "bg-vermelho",
+                    "Azul": "bg-azul",
+                    "Amarelo": "bg-amarelo",
+                    "Verde": "bg-verde"
+                };
+                elemento.classList.add(mapaClasse[cor]);
+                elemento.querySelector('.valor-oval').innerText += ` (${cor})`;
+            }
+
+            container.appendChild(elemento);
+        }
+
+        // Única fonte de verdade sobre de quem é a vez.
+        // O backend emite este evento no início do jogo e após cada jogada/compra.
+        socket.on('passar_turno', (data) => {
+            sidAtualTurno = data.sid;
+            sidProximoTurno = data.proximo_sid;
+            direcaoAtual = data.direcao || 1;
+
+            atualizarTurno(data.nome, data.sid, data.compra_pendente);
+            atualizarFluxoJogo(direcaoAtual);
+            atualizarDestaqueRoleta();
+
+            if (primeiroTurnoDaPartida) {
+                primeiroTurnoDaPartida = false;
+            } else {
+                girarRoleta(data.passos || 1);   // <-- passa os passos
+            }
+        });
+
+
+
+        socket.on('erro', (data) => {
+            somErro();
+            alert(data.msg);
+        });
+
+
+
+        socket.on('cartas_compradas', (data) => {
+            if (data.cartas.length > 1) somComprarCarta();
+            data.cartas.forEach((carta, i) => {
+                setTimeout(() => adicionarCartaNaMao(carta), i * 90);
+            });
+            if (data.motivo === 'penalidade') {
+                console.log(`Você comprou ${data.cartas.length} carta(s) por penalidade.`);
+            } else if (data.motivo === 'sem_jogada') {
+                console.log(`Sem jogada disponível: comprou ${data.cartas.length} carta(s) até achar uma jogável.`);
+            }
+        });
+
+        function atualizarTurno(nome, sid, compraPendente = 0) {
+            const turnoDiv = document.querySelector('.turnoDiv');
+            const souEu = sid === meuSid;
+            const eraSuaVez = turnoDiv.classList.contains('sua-vez');
+
+            let texto = souEu ? "🎯 É a sua vez!" : `Turno de: ${nome}`;
+            if (compraPendente > 0) {
+                texto += souEu
+                    ? ` (jogue +2/+4 ou compre ${compraPendente} carta${compraPendente > 1 ? 's' : ''})`
+                    : ` (com ${compraPendente} carta${compraPendente > 1 ? 's' : ''} pendente)`;
+            }
+            turnoDiv.innerText = texto;
+            turnoDiv.classList.toggle('sua-vez', souEu);
+
+            document.getElementById('mesa-wrapper').classList.toggle('brilho-turno', souEu);
+            document.body.classList.toggle('brilho-turno', souEu);
+
+            document.querySelectorAll('.jogador-badge').forEach(jogador => {
+                jogador.classList.toggle('vez', jogador.dataset.sid === sid);
+            });
+
+            document.getElementById('minha-mao').parentElement.style.opacity = souEu ? "1" : "0.6";
+
+            if (souEu && !eraSuaVez) somSuaVez();
+        }
+
+        // Atualiza o indicador de sentido do jogo (horário / anti-horário)
+        function atualizarFluxoJogo(direcao) {
+            const el = document.getElementById('fluxo-jogo');
+            if (!el) return;
+            const icone = el.querySelector('.icone-fluxo');
+            const texto = el.querySelector('span:last-child');
+            if (direcao === 1) {
+                icone.innerText = '↻';
+                texto.innerText = 'Sentido anti-horário';
+                el.classList.remove('sentido-anti');
+            } else {
+                icone.innerText = '↺';
+                texto.innerText = 'Sentido horário';
+                el.classList.add('sentido-anti');
+            }
+        }
+
+        // Renderiza a faixa com a ordem de todos os jogadores (você incluído),
+        // as setas de fluxo entre eles e o selo do próximo a jogar.
+        let rotacaoAcumulada = 0;
+
+        function renderizarRoleta(lista) {
+            const disco = document.getElementById('roleta-disco');
+            if (!disco) return;
+            disco.innerHTML = '';
+            const n = lista.length;
+            if (n === 0) return;
+            const raio = 85;
+            const passo = 360 / n;
+
+            lista.forEach((j, idx) => {
+                const anguloDeg = idx * passo - 90; // idx 0 nasce no topo (ponteiro)
+                const anguloRad = anguloDeg * Math.PI / 180;
+                const x = raio * Math.cos(anguloRad);
+                const y = raio * Math.sin(anguloRad);
+
+                const chip = document.createElement('div');
+                chip.className = 'roleta-chip';
+                chip.dataset.sid = j.sid;
+                chip.style.left = `calc(50% + ${x}px)`;
+                chip.style.top = `calc(50% + ${y}px)`;
+                if (j.sid === sidAtualTurno) chip.classList.add('vez');
+
+                const inner = document.createElement('div');
+                inner.className = 'roleta-chip-inner';
+                inner.style.transform = `rotate(${-rotacaoAcumulada}deg)`;
+
+                let avatar;
+                if (j.foto) {
+                    avatar = document.createElement('img');
+                    avatar.src = j.foto;
+                    avatar.className = 'avatar-ordem-img';
+                    avatar.alt = j.nome;
+                } else {
+                    avatar = document.createElement('div');
+                    avatar.className = 'avatar-ordem';
+                    avatar.style.background = corAvatar(j.sid);
+                    avatar.innerText = iniciais(j.nome);
+                }
+                inner.appendChild(avatar);
+
+                const nomeSpan = document.createElement('div');
+                nomeSpan.className = 'nome-ordem';
+                nomeSpan.innerText = j.sid === meuSid ? `${j.nome} (você)` : j.nome;
+                inner.appendChild(nomeSpan);
+
+                chip.appendChild(inner);
+                disco.appendChild(chip);
+            });
+        }
+
+        function girarRoleta(passos = 1) {
+            const disco = document.getElementById('roleta-disco');
+            if (!disco || jogadores.length === 0) return;
+            const passo = 360 / jogadores.length;
+            rotacaoAcumulada -= direcaoAtual * passo * passos;   // <-- multiplica pelos passos
+            disco.style.transform = `rotate(${rotacaoAcumulada}deg)`;
+            disco.querySelectorAll('.roleta-chip-inner').forEach(inner => {
+                inner.style.transform = `rotate(${-rotacaoAcumulada}deg)`;
+            });
+        }
+
+        function atualizarDestaqueRoleta() {
+            document.querySelectorAll('.roleta-chip').forEach(chip => {
+                chip.classList.toggle('vez', chip.dataset.sid === sidAtualTurno);
+            });
+        }
+
+        // Ações do Usuário
+        function entrarNaSala() {
+            obterAudioCtx();
+            const sala = document.getElementById('sala-id').value.trim();
+            const nome = document.getElementById('meu-nome').value.trim() || "Jogador";
+            meuNome = nome;
+            if (sala) {
+                salaAtual = sala;
+                socket.emit('entrar_sala', { sala: sala, nome: nome, foto: minhaFoto });
+            } else {
+                alert("Digite o nome de uma sala.");
+            }
+        }
+
+        function iniciarJogo() {
+            if (salaAtual) {
+                socket.emit('iniciar_jogo', { sala: salaAtual });
+            }
+        }
+
+        function comprarCarta() {
+            if (jogoEncerrado) return;
+            if (salaAtual) {
+                animarCompraParaMao();
+                socket.emit('sacar_carta', { sala: salaAtual });
+            } else {
+                alert("Você precisa entrar em uma sala primeiro.");
+            }
+        }
+
+        
+
+        // Renderização dos outros jogadores (avatar + verso das cartas)
+        function renderizarOutrosJogadores(jogadores) {
+            const container = document.getElementById('outros-jogadores');
+            container.innerHTML = '';
+
+            if (jogadores.length === 0) {
+                container.innerHTML = '<span class="sem-jogadores">Nenhum outro jogador na sala ainda</span>';
+                return;
+            }
+
+            jogadores.forEach(j => {
+                const badge = document.createElement('div');
+                badge.className = 'jogador-badge';
+                badge.dataset.sid = j.sid;
+
+                const qtd = j.qtd_cartas || 0;
+                const qtdVisivel = Math.min(qtd, 7);
+                let miniCartasHtml = '';
+                for (let i = 0; i < qtdVisivel; i++) {
+                    miniCartasHtml += '<div class="mini-carta"></div>';
+                }
+
+                const ehVoce = j.sid === meuSid;
+                const avatarHtml = j.foto
+                    ? `<img src="${j.foto}" class="avatar-img" alt="${j.nome}">`
+                    : `<div class="avatar" style="background:${corAvatar(j.sid)}">${iniciais(j.nome)}</div>`;
+
+                badge.innerHTML = `
+                    ${avatarHtml}
+                    <div class="nome-jogador">${ehVoce ? `${j.nome} (você)` : j.nome}</div>
+                    <div class="mini-mao">${miniCartasHtml}</div>
+                    <div class="qtd-cartas">${qtd} carta${qtd === 1 ? '' : 's'}</div>
+                `;
+                container.appendChild(badge);
+            });
+        }
+
+        // Renderização Visual das Cartas
+        function obterClasseCor(nomeCarta) {
+            if (nomeCarta.includes("Vermelho")) return "bg-vermelho";
+            if (nomeCarta.includes("Azul")) return "bg-azul";
+            if (nomeCarta.includes("Amarelo")) return "bg-amarelo";
+            if (nomeCarta.includes("Verde")) return "bg-verde";
+            return "bg-especial";
+        }
+
+        const MAPA_ABREVIACAO = {
+            "Bloqueio": "⦸",
+            "Inverter": "⇄",
+            "Comprar 2": "+2",
+            "Comprar 4": "+4",
+            "Coringa": "★"
+        };
+
+        function obterAbreviacao(textoExibicao) {
+            if (MAPA_ABREVIACAO[textoExibicao]) return MAPA_ABREVIACAO[textoExibicao];
+            return textoExibicao.length <= 2 ? textoExibicao : textoExibicao[0];
+        }
+
+        function criarElementoCarta(nomeCarta) {
+            const div = document.createElement('div');
+            const classeCor = obterClasseCor(nomeCarta);
+
+            div.className = `carta-uno ${classeCor}`;
+            div.dataset.carta = nomeCarta; // guarda o nome completo pra referência
+
+            const textoExibicao = nomeCarta
+                .replace("Vermelho ", "")
+                .replace("Azul ", "")
+                .replace("Amarelo ", "")
+                .replace("Verde ", "");
+
+            const abreviacao = obterAbreviacao(textoExibicao);
+
+            div.innerHTML = `
+                <div class="canto canto-topo">${abreviacao}</div>
+                <div class="valor-central"><span class="valor-oval">${abreviacao}</span></div>
+                <div class="canto canto-baixo">${abreviacao}</div>
+            `;
+            return div;
+        }
+
+
+
+        function renderizarMao(cartas) {
+            const container = document.getElementById('minha-mao');
+            container.innerHTML = '';
+            cartas.forEach(carta => {
+                container.appendChild(criarElementoCartaDaMao(carta));
+            });
+            atualizarContadorMao(); // <-- adicionar aqui
+        }
+
+        function adicionarCartaNaMao(carta) {
+            const container = document.getElementById('minha-mao');
+            const elemento = criarElementoCartaDaMao(carta);
+            elemento.classList.add('carta-entrando');
+            container.appendChild(elemento);
+            atualizarContadorMao(); // <-- adicionar aqui
+        }
+
+        function ehCuringa(nomeCarta) {
+            return nomeCarta === "Coringa" || nomeCarta === "Comprar 4";
+        }
+
+        function criarElementoCartaDaMao(nomeCarta) {
+            const div = criarElementoCarta(nomeCarta);
+            div.style.cursor = "pointer";
+            div.onclick = () => {
+                if (ehCuringa(nomeCarta)) {
+                    abrirSeletorDeCor(nomeCarta);
+                } else {
+                    jogarCarta(nomeCarta);
+                }
+            };
+            return div;
+        }
+
+        function jogarCarta(carta, cor = null) {
+            if (jogoEncerrado) return;
+            if (!salaAtual) {
+                alert("Você precisa entrar em uma sala primeiro.");
+                return;
+            }
+            socket.emit('jogar_carta', { sala: salaAtual, carta: carta, cor: cor });
+        }
+
+        const MAPA_COR_HEX = {
+            "Vermelho": "var(--uno-vermelho)",
+            "Azul": "var(--uno-azul)",
+            "Amarelo": "var(--uno-amarelo)",
+            "Verde": "var(--uno-verde)"
+        };
+
+        function abrirSeletorDeCor(carta) {
+            const overlay = document.createElement('div');
+            overlay.className = 'overlay-cor';
+
+            const caixa = document.createElement('div');
+            caixa.className = 'seletor-cor';
+            caixa.innerHTML = '<h3>Escolha uma cor</h3>';
+
+            const opcoes = document.createElement('div');
+            opcoes.className = 'opcoes-cor';
+
+            Object.entries(MAPA_COR_HEX).forEach(([cor, corCss]) => {
+                const btn = document.createElement('div');
+                btn.className = 'opcao-cor';
+                btn.style.background = corCss;
+                btn.onclick = () => {
+                    document.body.removeChild(overlay);
+                    jogarCarta(carta, cor);
+                };
+                opcoes.appendChild(btn);
+            });
+
+            caixa.appendChild(opcoes);
+            overlay.appendChild(caixa);
+            document.body.appendChild(overlay);
+        }
+
+    </script>
+</body>
+</html>
